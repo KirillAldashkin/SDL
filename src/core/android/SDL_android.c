@@ -70,10 +70,6 @@ JNIEXPORT jstring JNICALL SDL_JAVA_INTERFACE(nativeGetVersion)(
 JNIEXPORT void JNICALL SDL_JAVA_INTERFACE(nativeSetupJNI)(
     JNIEnv *env, jclass cls);
 
-JNIEXPORT int JNICALL SDL_JAVA_INTERFACE(nativeRunMain)(
-    JNIEnv *env, jclass cls,
-    jstring library, jstring function, jobject array);
-
 JNIEXPORT void JNICALL SDL_JAVA_INTERFACE(onNativeDropFile)(
     JNIEnv *env, jclass jcls,
     jstring filename);
@@ -173,7 +169,6 @@ JNIEXPORT void JNICALL SDL_JAVA_INTERFACE(nativePermissionResult)(
 static JNINativeMethod SDLActivity_tab[] = {
     { "nativeGetVersion", "()Ljava/lang/String;", SDL_JAVA_INTERFACE(nativeGetVersion) },
     { "nativeSetupJNI", "()I", SDL_JAVA_INTERFACE(nativeSetupJNI) },
-    { "nativeRunMain", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)I", SDL_JAVA_INTERFACE(nativeRunMain) },
     { "onNativeDropFile", "(Ljava/lang/String;)V", SDL_JAVA_INTERFACE(onNativeDropFile) },
     { "nativeSetScreenResolution", "(IIIIF)V", SDL_JAVA_INTERFACE(nativeSetScreenResolution) },
     { "onNativeResize", "()V", SDL_JAVA_INTERFACE(onNativeResize) },
@@ -729,105 +724,6 @@ JNIEXPORT void JNICALL SDL_JAVA_CONTROLLER_INTERFACE(nativeSetupJNI)(JNIEnv *env
     }
 
     checkJNIReady();
-}
-
-/* SDL main function prototype */
-typedef int (*SDL_main_func)(int argc, char *argv[]);
-
-/* Start up the SDL app */
-JNIEXPORT int JNICALL SDL_JAVA_INTERFACE(nativeRunMain)(JNIEnv *env, jclass cls, jstring library, jstring function, jobject array)
-{
-    int status = -1;
-    const char *library_file;
-    void *library_handle;
-
-    __android_log_print(ANDROID_LOG_VERBOSE, "SDL", "nativeRunMain()");
-
-    /* Save JNIEnv of SDLThread */
-    Android_JNI_SetEnv(env);
-
-    library_file = (*env)->GetStringUTFChars(env, library, NULL);
-    library_handle = dlopen(library_file, RTLD_GLOBAL);
-
-    if (library_handle == NULL) {
-        /* When deploying android app bundle format uncompressed native libs may not extract from apk to filesystem.
-           In this case we should use lib name without path. https://bugzilla.libsdl.org/show_bug.cgi?id=4739 */
-        const char *library_name = SDL_strrchr(library_file, '/');
-        if (library_name && *library_name) {
-            library_name += 1;
-            library_handle = dlopen(library_name, RTLD_GLOBAL);
-        }
-    }
-
-    if (library_handle) {
-        const char *function_name;
-        SDL_main_func SDL_main;
-
-        function_name = (*env)->GetStringUTFChars(env, function, NULL);
-        SDL_main = (SDL_main_func)dlsym(library_handle, function_name);
-        if (SDL_main) {
-            int i;
-            int argc;
-            int len;
-            char **argv;
-            SDL_bool isstack;
-
-            /* Prepare the arguments. */
-            len = (*env)->GetArrayLength(env, array);
-            argv = SDL_small_alloc(char *, 1 + len + 1, &isstack); /* !!! FIXME: check for NULL */
-            argc = 0;
-            /* Use the name "app_process" so PHYSFS_platformCalcBaseDir() works.
-               https://bitbucket.org/MartinFelis/love-android-sdl2/issue/23/release-build-crash-on-start
-             */
-            argv[argc++] = SDL_strdup("app_process");
-            for (i = 0; i < len; ++i) {
-                const char *utf;
-                char *arg = NULL;
-                jstring string = (*env)->GetObjectArrayElement(env, array, i);
-                if (string) {
-                    utf = (*env)->GetStringUTFChars(env, string, 0);
-                    if (utf) {
-                        arg = SDL_strdup(utf);
-                        (*env)->ReleaseStringUTFChars(env, string, utf);
-                    }
-                    (*env)->DeleteLocalRef(env, string);
-                }
-                if (arg == NULL) {
-                    arg = SDL_strdup("");
-                }
-                argv[argc++] = arg;
-            }
-            argv[argc] = NULL;
-
-            /* Run the application. */
-            status = SDL_main(argc, argv);
-
-            /* Release the arguments. */
-            for (i = 0; i < argc; ++i) {
-                SDL_free(argv[i]);
-            }
-            SDL_small_free(argv, isstack);
-
-        } else {
-            __android_log_print(ANDROID_LOG_ERROR, "SDL", "nativeRunMain(): Couldn't find function %s in library %s", function_name, library_file);
-        }
-        (*env)->ReleaseStringUTFChars(env, function, function_name);
-
-        dlclose(library_handle);
-
-    } else {
-        __android_log_print(ANDROID_LOG_ERROR, "SDL", "nativeRunMain(): Couldn't load library %s", library_file);
-    }
-    (*env)->ReleaseStringUTFChars(env, library, library_file);
-
-    /* This is a Java thread, it doesn't need to be Detached from the JVM.
-     * Set to mThreadKey value to NULL not to call pthread_create destructor 'Android_JNI_ThreadDestroyed' */
-    Android_JNI_SetEnv(NULL);
-
-    /* Do not issue an exit or the whole application will terminate instead of just the SDL thread */
-    /* exit(status); */
-
-    return status;
 }
 
 /* Drop file */

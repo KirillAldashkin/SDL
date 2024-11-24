@@ -57,7 +57,7 @@ import java.util.Locale;
 /**
     SDL Activity
 */
-public class SDLActivity extends Activity implements View.OnSystemUiVisibilityChangeListener {
+public abstract class SDLActivity extends Activity implements View.OnSystemUiVisibilityChangeListener {
     private static final String TAG = "SDL";
     private static final int SDL_MAJOR_VERSION = 2;
     private static final int SDL_MINOR_VERSION = 30;
@@ -237,29 +237,6 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     }
 
     /**
-     * This method returns the name of the shared object with the application entry point
-     * It can be overridden by derived classes.
-     */
-    protected String getMainSharedObject() {
-        String library;
-        String[] libraries = SDLActivity.mSingleton.getLibraries();
-        if (libraries.length > 0) {
-            library = "lib" + libraries[libraries.length - 1] + ".so";
-        } else {
-            library = "libmain.so";
-        }
-        return getContext().getApplicationInfo().nativeLibraryDir + "/" + library;
-    }
-
-    /**
-     * This method returns the name of the application entry point
-     * It can be overridden by derived classes.
-     */
-    protected String getMainFunction() {
-        return "SDL_main";
-    }
-
-    /**
      * This method is called by SDL before loading the native shared libraries.
      * It can be overridden to provide names of shared libraries to be loaded.
      * The default implementation returns the defaults. It never returns null.
@@ -274,7 +251,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             // "SDL2_mixer",
             // "SDL2_net",
             // "SDL2_ttf",
-            "main"
+            // "main"
         };
     }
 
@@ -315,6 +292,8 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     protected SDLSurface createSDLSurface(Context context) {
         return new SDLSurface(context);
     }
+	
+	public abstract void SDLMain(String[] arguments);
 
     // Setup
     @Override
@@ -901,7 +880,6 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     // C functions we call
     public static native String nativeGetVersion();
     public static native int nativeSetupJNI();
-    public static native int nativeRunMain(String library, String function, Object arguments);
     public static native void nativeLowMemory();
     public static native void nativeSendQuit();
     public static native void nativeQuit();
@@ -1868,9 +1846,6 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 class SDLMain implements Runnable {
     @Override
     public void run() {
-        // Runs SDL_main()
-        String library = SDLActivity.mSingleton.getMainSharedObject();
-        String function = SDLActivity.mSingleton.getMainFunction();
         String[] arguments = SDLActivity.mSingleton.getArguments();
 
         try {
@@ -1879,9 +1854,9 @@ class SDLMain implements Runnable {
             Log.v("SDL", "modify thread properties failed " + e.toString());
         }
 
-        Log.v("SDL", "Running main function " + function + " from library " + library);
+        Log.v("SDL", "Running SDLActivity.SDLMain");
 
-        SDLActivity.nativeRunMain(library, function, arguments);
+        SDLActivity.mSingleton.SDLMain(arguments);
 
         Log.v("SDL", "Finished main function");
 
